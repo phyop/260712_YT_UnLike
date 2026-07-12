@@ -1,59 +1,59 @@
-# Portfolio collateral
+# Portfolio Collateral
 
 ## Resume bullets
 
-- Automated a 1,676-item YouTube account cleanup with Python and YouTube Data API v3, preserving the nine newest likes through a tested deterministic split strategy.
-- Reduced destructive-operation risk by implementing dry-run previews, explicit confirmation, bounded 180-item batches, and JSON audit reporting before production execution.
-- Recovered a deleted cloud-agent deliverable from Git commit history, reorganized it as a standalone repository, and established secret-safe GitHub publishing controls.
-- Diagnosed and resolved OAuth/API enablement separation and Windows Unicode failures, enabling reliable processing of multilingual YouTube metadata.
-- Coordinated Cursor and Codex in a human-approved agent workflow that completed 102 production updates while stopping safely on permission/quota signals.
+- Automated the review of 1,676 YouTube liked videos with Python and YouTube Data API v3, using a deterministic rule to preserve the nine newest items.
+- Reduced destructive-operation risk by implementing dry-run previews, explicit confirmation, bounded batches, and JSON audit reporting before production execution.
+- Recovered a cloud-agent deliverable from Git history, reorganized it as a standalone public repository, and established credential-safe publishing controls.
+- Diagnosed OAuth/API configuration and Windows Unicode failures, enabling reliable processing of multilingual YouTube metadata.
+- Coordinated Cursor and Codex in a human-approved workflow that completed 102 account updates and stopped safely on API limits.
 
-## LinkedIn
+## LinkedIn project introduction
 
-最近我完成了一個很實際、也很適合檢驗 AI 協作工程能力的專案：用 Python 與 YouTube Data API v3，整理累積多年的 1,676 部「喜歡的影片」，只保留最近九部。真正困難的不是逐筆呼叫 API，而是如何安全地修改真實帳號。我加入 dry-run、人工確認、批次上限、OAuth 機密隔離與 JSON 稽核報告，並處理 Google API 未啟用、Windows Unicode、影片失效及配額限制。專案由 Cursor 產生初版，Codex 負責從 Git 歷史復原、整合、測試、部署與實際執行；第一批成功完成 102 次更新並在風險訊號出現時自動停止。這次經驗再次證明，AI Agent 的價值不是取代人，而是讓人專注在授權、風險與架構決策。
+I built a Python command-line tool to clean a YouTube “Liked videos” playlist containing 1,676 entries while preserving the nine most recent likes. The engineering challenge was not the loop—it was making destructive automation safe. The tool defaults to dry-run mode, separates planning from execution, requires explicit confirmation, limits each batch, and records results for auditing. I also resolved Google OAuth and YouTube Data API configuration issues, handled multilingual titles on Windows consoles, and protected local credentials with strict Git ignore rules. Cursor accelerated the initial implementation, while Codex supported repository recovery, validation, documentation, and the controlled production run. This project demonstrates how AI-assisted development can remain practical, reproducible, and human-governed when automation touches a real user account.
 
 ## Commit message
 
 ```text
-docs: publish project documentation and reusable content skill
+docs: publish English project and portfolio content
 ```
 
-## PR description
+## Pull request description
 
 ### Summary
 
-Organize the YouTube cleanup repository and publish engineering and portfolio documentation.
+Publish English documentation and portfolio materials for the YouTube liked-video cleanup project.
 
 ### Changes
 
-- add a comprehensive engineering README
-- add a story-driven Medium draft and portfolio collateral
-- add the reusable `publish-github-medium` Codex skill
-- isolate OAuth credentials, tokens, and runtime reports
-- configure UTF-8 console output on Windows
+- replace corrupted multilingual copy with complete English content
+- document the OAuth, dry-run, quota, and Unicode lessons
+- add English resume and LinkedIn collateral
+- preserve credential-safe repository guidance
 
 ### Testing
 
 - `python -m unittest discover -s tests -v`
 - `python -m py_compile cleanup_liked.py`
 - `git diff --check`
-- secret and ignore verification
+- tracked-file secret scan and CJK-language audit
 
 ### Screenshots
 
-Not applicable; this is a CLI project.
+Not applicable; this is a command-line project.
 
-### Future Work
+### Future work
 
-- persistent checkpoints and retry classification
+- resumable SQLite checkpoints and idempotent retries
 - scheduled quota-aware continuation
-- web approval UI and CI matrix
+- web approval interface
+- CI across supported operating systems
 
 ## Follow-on projects
 
-1. **Version 2 – Resumable jobs:** SQLite checkpoints, error taxonomy, idempotent retries, and progress dashboards.
-2. **AI-assisted review:** summarize videos selected for removal while retaining explicit human approval.
-3. **Agent workflow:** a scheduled Codex task that checks quota, proposes the next batch, and waits for authorization.
-4. **Web UI:** FastAPI backend with a visual keep/remove approval queue and OAuth callback flow.
-5. **Delivery architecture:** Docker, CI across operating systems, secret scanning, release artifacts, and signed builds.
-6. **Consulting template:** generalize the safety pattern into an auditable account-cleanup agent for other SaaS APIs.
+1. **Resumable job engine:** Add SQLite checkpoints, structured error classes, retry policy, and progress dashboards.
+2. **AI-assisted review:** Summarize removal candidates while preserving explicit user approval.
+3. **Agent workflow:** Schedule quota checks and propose the next safe batch without autonomous execution.
+4. **Web interface:** Build a FastAPI approval queue with OAuth callback handling.
+5. **Delivery architecture:** Add Docker, CI, secret scanning, signed releases, and multi-platform tests.
+6. **Consulting template:** Generalize the safety model into an auditable cleanup agent for other SaaS APIs.

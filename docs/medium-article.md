@@ -1,100 +1,128 @@
-# 我用 Python 清理 1,676 部 YouTube 喜歡影片：從 OAuth、API 配額到安全批次的完整實戰
+# How I Cleaned 1,676 YouTube Likes with Python—Without Trusting Automation Blindly
 
-## 五個候選標題
+## Title options
 
-1. 我用 Python 清理 1,676 部 YouTube 喜歡影片：OAuth 與配額踩坑實錄
-2. YouTube 沒有「批次取消喜歡」？我做了一個安全優先的 Python CLI
-3. 從 Dry-run 到 Human-in-the-loop：一個真正會修改帳號的自動化工具該怎麼設計
-4. Cursor 寫了程式、Codex 完成落地：AI 協作開發 YouTube 清理工具實錄
-5. 只留下最近九部：YouTube Data API v3 的批次清理工程
+1. How I Cleaned 1,676 YouTube Likes with Python—Safely
+2. Building a Human-in-the-Loop YouTube Cleanup Tool with Python
+3. OAuth, Quotas, and Dry Runs: Automating YouTube Like Cleanup
+4. From Cursor Prototype to Codex Production Run: A YouTube API Case Study
+5. What 1,676 Liked Videos Taught Me About Destructive Automation
 
-## 開場：一個看似簡單、其實很危險的需求
+## The problem
 
-我的 YouTube「喜歡的影片」累積了很多年。某天我想把它變成一個真正有用的短清單：只留下最近按讚的九部，其餘全部取消喜歡。
+My YouTube “Liked videos” playlist had quietly grown to 1,676 entries. I wanted a simple outcome: keep only the nine most recently liked videos and remove the rating from everything older.
 
-手動處理 1,676 部影片幾乎不可能。直覺上，這只是「抓清單、跳過九筆、逐筆取消」；但只要程式排序錯一次，就可能把最想保留的內容刪掉。它還牽涉 Google OAuth、YouTube API 配額、失效影片、Windows 中文編碼，以及真正會改變雲端帳號的破壞性操作。
+The user interface was fine for a handful of videos, but not for more than a thousand. The obvious answer was automation. The dangerous part was that the operation was destructive and account-wide. A sorting bug, reversed playlist order, or accidental confirmation could remove the wrong ratings at scale.
 
-這個專案最重要的成果，不是寫出一個迴圈，而是建立一條可以信任的自動化工作流。
+So the real project was not “call an API in a loop.” It was to build a workflow that could prove what it intended to change before receiving permission to change anything.
 
-## 背景：為什麼這個問題不好解
+## Why this was harder than expected
 
-YouTube 網頁沒有提供大量取消喜歡的正式介面。瀏覽器自動化雖然可行，卻容易受 UI 改版、延遲與登入狀態影響；因此我選擇官方 YouTube Data API v3。
+YouTube Data API v3 exposes the authenticated user’s liked-video playlist and lets an application update a video rating. That sounds straightforward, but several systems have to agree:
 
-API 本身也有三個限制。第一，需要 Desktop OAuth，因為「喜歡」屬於私人帳號資料。第二，讀取播放清單與修改 rating 使用不同的 API 操作。第三，每次修改都消耗配額，不能假設一次可以處理上千部。
+- Google Cloud must have YouTube Data API v3 enabled.
+- The OAuth client must be configured as a Desktop application.
+- The user must grant the correct YouTube scope.
+- The liked playlist must be read in the intended order.
+- API quota and per-item failures must be handled safely.
+- OAuth credentials and tokens must never enter Git history.
 
-因此架構從一開始就採取四層保護：dry-run、明確確認、批次上限、JSON 稽核報告。
+The project also crossed multiple environments. Cursor created the first implementation in a cloud workflow, while the actual OAuth login and account mutation had to run on my Windows computer. Codex then recovered, organized, validated, and executed the local project with human approval at each destructive boundary.
 
-## Debug 過程
+## Debugging the workflow
 
-### 第一關：程式存在，檔案卻消失了
+### 1. Recovering the implementation
 
-Cursor Cloud Agent 最初把工具寫在另一個 repository 的 PR 裡，之後又依需求將變更移除，改成一個沒有真正交付成功的 ZIP artifact。PR 最後合併時淨變更為零。
+The first surprise was operational rather than technical: I could not find a ZIP artifact to move. The useful source was already stored in Git history. Recovering the committed files was more reliable than depending on an ephemeral cloud download.
 
-解法不是重寫，而是從 Git 歷史找回第一個 commit。Git 的價值在此非常具體：即使最終分支已經刪掉檔案，blob 仍可從歷史 commit 復原。我把四個原始檔案取回，建立獨立 repository，再推送到 GitHub。
+This reinforced a simple engineering rule: a deliverable is not durable until it is in version control and can be reproduced from a known commit.
 
-### 第二關：OAuth JSON 不等於 API 已可用
+### 2. Separating OAuth setup from API enablement
 
-取得 `client_secret.json` 後，OAuth 登入成功，`token.json` 也建立了；第一次 API 呼叫卻回傳 403：專案尚未啟用 YouTube Data API v3。
+Placing `client_secret.json` in the project directory was necessary, but not sufficient. OAuth identity and API availability are separate controls. The login flow can succeed while API calls still fail if YouTube Data API v3 is disabled for the Google Cloud project.
 
-這讓我重新區分兩個概念：OAuth Client 決定「誰可以要求使用者授權」，API enablement 決定「這個 Google Cloud 專案能不能呼叫服務」。兩者缺一不可。
+The final setup checklist treated them independently:
 
-啟用 API 後，工具成功讀出 Liked videos 的特殊播放清單 ID `LL`，並分頁取得 1,676 筆資料。
+1. Enable YouTube Data API v3.
+2. Create a Desktop OAuth client.
+3. Download `client_secret.json` locally.
+4. Authorize the requested YouTube scope.
+5. Store the resulting token locally and keep both files out of Git.
 
-### 第三關：Windows CP950 遇到全球內容
+### 3. Making the default behavior non-destructive
 
-清單抓到了，程式卻在輸出第一批標題時出現 `UnicodeEncodeError`。原因不是 YouTube 資料錯誤，而是 Windows 傳統終端使用 CP950，無法表示某些簡體字與 emoji。
+The command defaults to dry-run mode. It retrieves the complete liked-video list, preserves the newest N items, and prints the planned removals without changing the account.
 
-短期用 `PYTHONUTF8=1` 解決；長期則在程式啟動時重新設定 stdout/stderr 為 UTF-8 並使用 replace fallback。這是常被忽略的 production 細節：資料處理成功，不代表可觀測性也成功。
+```powershell
+python cleanup_liked.py --keep 9
+```
 
-### 第四關：真實世界的清單並不乾淨
+Only an explicit execution flag permits mutation:
 
-第一個正式批次設定最多 180 部。實際結果為 102 部成功、3 部失敗：兩部回傳 404，一部回傳 403。404 通常代表影片已刪除或資源不可見；403 可能是特殊權限狀態或配額訊號。
+```powershell
+python cleanup_liked.py --keep 9 --execute
+```
 
-程式沒有重頭再跑，也沒有丟失成功紀錄，而是停止後把結果寫入報告。這比「追求 100% 一次完成」更符合安全工程。
+This separation mattered more than any single API call. The preview gave me a chance to verify that the nine retained videos matched what I saw in YouTube before authorizing removal.
 
-## Solution：把危險操作拆成可審核狀態機
+### 4. Handling Windows Unicode output
 
-完整流程如下：
+Video titles can contain characters and emoji that are not representable in the legacy Windows CP950 console encoding. That produced `UnicodeEncodeError` failures during reporting, even though the API data itself was valid.
 
-1. OAuth 登入並快取 token。
-2. 取得目前使用者的 Liked videos playlist。
-3. 依 YouTube 回傳順序分頁讀取所有項目。
-4. 將前 N 筆放入 keep，其餘放入 planned unlike。
-5. 預設只列印並寫入報告。
-6. 只有 `--execute` 加人工確認才開始修改。
-7. `--max-unlike` 限制單次影響範圍。
-8. 遇到速率、配額或權限訊號時停止，保留已完成進度。
+The solution was to make console output UTF-8 aware and provide a replacement fallback. In practice, Unicode handling is part of production correctness whenever external metadata is printed to a terminal.
 
-它有效的原因，是把「決策」與「執行」分開。Dry-run 產生一個可核對的決策面；execute 才是副作用面。AI 可以協助建立工具、找出錯誤與操作介面，但最後的帳號變更仍由人確認，這正是 Human-in-the-loop。
+### 5. Respecting quotas and partial failures
 
-## 我學到什麼
+Removing a rating requires a write request for each video, so a large cleanup cannot assume unlimited daily quota. The tool supports bounded batches:
 
-架構上，我學到 destructive automation 必須內建可逆思維，即使 API 操作本身不可逆，也能靠預覽、限量與報告降低爆炸半徑。
+```powershell
+python cleanup_liked.py --keep 9 --execute --max-unlike 180
+```
 
-工具上，我更清楚 Git 歷史不只是協作紀錄，也是災難復原機制；Google OAuth 與 API enablement 則是兩個相互獨立的控制面。
+During the production run, the workflow completed 102 updates before stopping safely when API responses indicated that continuing was not appropriate. A batch limit, audit report, and idempotent selection rule made continuation manageable instead of turning partial completion into a recovery incident.
 
-Workflow 上，Cursor 適合快速生成初版，Codex 則接手本機整合、憑證安全、實際驗證、GitHub 發布與瀏覽器操作。AI 協作真正的價值，不是讓人離開流程，而是讓人把注意力放在授權與風險判斷。
+## The final design
 
-## 可以避免哪些坑
+The workflow is deliberately simple:
 
-- 不要把 `client_secret.json`、`token.json` 或含私人觀看資料的報告提交到 Git。
-- 不要第一次執行就加 `--execute --yes`。
-- 不要把 OAuth 成功誤認為 API 已啟用。
-- 不要假設每部影片仍可被 rating API 操作。
-- 不要忽略 Windows 終端編碼。
-- 不要一次吃滿每日配額；為 retry 與人工驗證保留空間。
-- 不要把 AI 產生的程式直接連到 production 帳號，先測試純函式與 dry-run。
+1. Authenticate locally with OAuth.
+2. Resolve the authenticated user’s liked-video playlist.
+3. Retrieve items in playlist order.
+4. Split the list into “keep” and “planned removal” groups.
+5. Show a dry-run preview and write an audit report.
+6. Require explicit execution approval.
+7. Process a bounded batch and record every outcome.
+8. Stop safely on quota, permission, or unavailable-video signals.
 
-## 結論
+The key architectural choice is the boundary between planning and execution. Dry-run and execute use the same deterministic selection logic. The second phase does not independently decide what should be removed; it applies a plan that the user has already reviewed.
 
-這個專案最大的收穫是：可靠的自動化，不是做得最快，而是每一步都能被看見、限制、停止與追溯。
+## What I learned
+
+Destructive automation needs more than correct code. It needs a safety model. Defaults should be reversible or read-only, scope should be visible, execution should require explicit intent, and results should be auditable.
+
+I also learned that AI-assisted development works best as a controlled pipeline. Cursor accelerated initial implementation. Codex handled local recovery, repository hygiene, validation, and execution support. Git supplied the durable handoff. Human approval remained the authority for OAuth access and account changes.
+
+Finally, operational details are part of the architecture. OAuth configuration, API enablement, Windows encoding, quota limits, and Git ignore rules were not peripheral setup issues. Any one of them could determine whether the system was safe and usable.
+
+## Pitfalls to avoid
+
+- Never commit `client_secret.json`, `token.json`, or execution reports containing account data.
+- Never make destructive mode the default.
+- Never assume OAuth success means the target API is enabled.
+- Never assume external titles are compatible with the local console encoding.
+- Never process thousands of write requests without quotas, batch limits, and checkpoints.
+- Never let an AI agent move from preview to production without explicit human approval.
+
+## Conclusion
+
+The most valuable outcome was not removing old likes; it was building an automation workflow that earned permission to act by showing its plan first.
 
 ## SEO
 
-- **SEO Title:** 用 Python 批次清理 YouTube 喜歡影片：OAuth、API 配額與 Dry-run 實戰
-- **Meta Description:** 從 1,676 部 YouTube 喜歡影片中只保留最近九部，完整解析 Python、YouTube Data API v3、Google OAuth、配額控制、Windows Unicode 與 Human-in-the-loop 安全設計。
-- **URL Slug:** `python-youtube-liked-videos-cleanup-oauth-api`
+- **SEO title:** How to Clean YouTube Liked Videos with Python, OAuth, and Safe Dry Runs
+- **Meta description:** A practical case study on cleaning 1,676 YouTube liked videos with Python, YouTube Data API v3, OAuth, quota-aware batches, UTF-8 handling, and human approval.
+- **URL slug:** `python-youtube-liked-videos-cleanup-oauth-api`
 
 ## Tags
 
-Python, YouTube API, OAuth, GitHub, Codex
+Python, YouTube API, OAuth, Automation, AI Agents
