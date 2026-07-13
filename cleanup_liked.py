@@ -200,6 +200,28 @@ def unlike_video(youtube: Any, video_id: str) -> None:
     youtube.videos().rate(id=video_id, rating="none").execute()
 
 
+def is_quota_or_rate_limit(exc: Exception) -> bool:
+    """Return True only for explicit quota or rate-limit API failures."""
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if status == 429:
+        return True
+
+    details = getattr(exc, "error_details", None)
+    content = getattr(exc, "content", b"")
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", errors="replace")
+    combined = f"{details or ''} {content or ''} {exc}"
+    return any(
+        reason in combined
+        for reason in (
+            "quotaExceeded",
+            "dailyLimitExceeded",
+            "rateLimitExceeded",
+            "userRateLimitExceeded",
+        )
+    )
+
+
 def print_video_list(label: str, videos: list[LikedVideo], limit: int = 20) -> None:
     print(f"\n=== {label}（共 {len(videos)} 部）===")
     for video in videos[:limit]:
@@ -323,8 +345,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"[{index}/{len(to_unlike)}] 失敗：{video.video_id} — {exc}",
                 file=sys.stderr,
             )
-            # 配額用盡時提早結束，方便隔日用 --max-unlike 續跑
-            if exc.resp is not None and exc.resp.status in {403, 429}:
+            # 一般 403（例如私人影片）與 404 應記錄後跳過；只有明確的
+            # quota/rate-limit reason 或 HTTP 429 才停止後續請求。
+            if is_quota_or_rate_limit(exc):
                 print(
                     "疑似配額／速率限制，停止後續請求。"
                     "可隔日再執行；已取消的不會重複處理。",

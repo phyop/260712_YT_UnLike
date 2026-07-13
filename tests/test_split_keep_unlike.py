@@ -58,6 +58,39 @@ class SplitKeepUnlikeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.mod.split_keep_and_unlike(self._videos(1), -1)
 
+    def test_generic_forbidden_is_not_quota(self) -> None:
+        class Response:
+            status = 403
+
+        class Error(Exception):
+            resp = Response()
+            error_details = [{"reason": "forbidden"}]
+            content = b'{"error":{"errors":[{"reason":"forbidden"}]}}'
+
+        self.assertFalse(self.mod.is_quota_or_rate_limit(Error("permission denied")))
+
+    def test_quota_exceeded_stops(self) -> None:
+        class Response:
+            status = 403
+
+        class Error(Exception):
+            resp = Response()
+            error_details = [{"reason": "quotaExceeded"}]
+            content = b""
+
+        self.assertTrue(self.mod.is_quota_or_rate_limit(Error("quota exhausted")))
+
+    def test_http_429_stops(self) -> None:
+        class Response:
+            status = 429
+
+        class Error(Exception):
+            resp = Response()
+            error_details = None
+            content = b""
+
+        self.assertTrue(self.mod.is_quota_or_rate_limit(Error("too many requests")))
+
 
 if __name__ == "__main__":
     unittest.main()
